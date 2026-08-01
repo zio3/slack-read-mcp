@@ -9,6 +9,7 @@
   "files": [
     "dist",
     "GUIDE.md",
+    "INSTALL.md",
     "slack-app-manifest.json",
     "channels.example.json"
   ],
