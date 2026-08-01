@@ -136,6 +136,20 @@ claude mcp add slack-read --scope local -- npx -y github:zio3/slack-read-mcp
 claude mcp add slack-read --scope local -- node /path/to/slack-read-mcp/dist/index.js
 ```
 
+Codex CLI の場合は `~/.codex/config.toml` に追記します（ユーザー単位の設定であり、
+リポジトリには入らないためスコープの問題はありません）:
+
+```toml
+[mcp_servers.slack-read]
+command = "npx"
+args = ["-y", "github:zio3/slack-read-mcp"]
+```
+
+`npx` の初回実行は取得とビルドで時間がかかり、クライアントの起動タイムアウトに
+かかることがあります。事前に一度 `npx -y github:zio3/slack-read-mcp --help` などで
+温めておくか、クローンして `command = "node"`, `args = ["/path/to/dist/index.js"]` を
+指定してください。
+
 **トークンを MCP の設定に書かないでください**（`--env SLACK_BOT_TOKEN=…` を使わない）。
 サーバーは `~/.slack-read-mcp/token` を自分で読みます。設定に平文で残すと、設定の
 共有・バックアップ時に漏れます。
