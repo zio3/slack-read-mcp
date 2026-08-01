@@ -26,6 +26,10 @@ Bot は自分が招待されていないチャンネルの存在を知ること�
 
 ## セットアップ
 
+導入作業を AI に任せる場合は、**[INSTALL.md](INSTALL.md) を読ませてください。**
+環境（Node のバージョン、Slack アプリの有無）を確認したうえで、利用者にしかできない操作だけを
+依頼するよう書かれています。以下は人間が自分で作業する場合の手順です。
+
 ### 1. Slack アプリを作る
 
 [api.slack.com/apps](https://api.slack.com/apps) → Create New App → **From a manifest** を選び、
@@ -117,6 +121,16 @@ pwsh ./test-mcp.ps1 -Tool list_channels
 ```
 
 `test-mcp.ps1` は MCP サーバーを素の JSON-RPC で叩く確認用スクリプトです。
+
+ビルドを挟まず TypeScript のまま実行することもできます（Node 22.6 以降）。
+
+```bash
+npm run start:ts        # Node 22.6〜23.5（--experimental-strip-types 付き）
+node src/index.ts       # Node 23.6 以降（フラグ不要）
+```
+
+配布時にビルド方式を既定にしているのは、実行環境の Node バージョンに依存させないためです。
+型ストリッピングはまだ experimental で、stderr に警告が出ます。
 
 ## ライセンス
 
