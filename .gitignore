@@ -1,0 +1,5 @@
+node_modules/
+dist/
+
+# 読み取り対象の設定。実際のチャンネル ID を含むため置かない
+channels.json

@@ -1,0 +1,32 @@
+{
+  "name": "slack-read-mcp",
+  "version": "0.1.0",
+  "description": "Read-only Slack MCP server. Reads only the channels its bot has been invited to.",
+  "type": "module",
+  "bin": {
+    "slack-read-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "GUIDE.md",
+    "slack-app-manifest.json",
+    "channels.example.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "start": "node dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT"
+}
