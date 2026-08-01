@@ -1,3 +1,5 @@
 [
-  { "id": "C0123456789", "name": "example-channel", "note": "チャンネル名を右クリック →「リンクをコピー」で ID が取れる" }
+  { "id": "C0123456789", "name": "team-general" },
+  { "id": "https://example.slack.com/archives/C0123ABCDEF", "note": "URL のままでもよい（ID を自動抽出する）" },
+  { "id": "C0456GHIJKL", "note": "name は表示用のラベルにすぎず、省略できる" }
 ]

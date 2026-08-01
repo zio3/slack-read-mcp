@@ -38,14 +38,25 @@ if (!token) {
 }
 
 /** 読み取り対象のチャンネル。権限ではなく、読みに行く先の一覧にすぎない。 */
-type ChannelEntry = { id: string; name: string; note?: string };
+type ChannelEntry = { id: string; name?: string; note?: string };
+
+/**
+ * チャンネル ID を取り出す。素の ID のほか、Slack の URL
+ * （…/archives/C… や app.slack.com/client/T…/C…）を貼られても動くようにする。
+ * name は表示用のラベルにすぎず、読み取りは ID だけで行われる。
+ */
+function normalizeChannelId(value: string): string {
+  const ids = value.match(/[CG][A-Z0-9]{7,}/g);
+  return ids ? ids[ids.length - 1] : value;
+}
 
 function loadChannels(): ChannelEntry[] {
   const path =
     process.env.SLACK_CHANNELS_FILE ?? join(configDir, "channels.json");
   if (!existsSync(path)) return [];
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as ChannelEntry[];
+    const entries = JSON.parse(readFileSync(path, "utf8")) as ChannelEntry[];
+    return entries.map((e) => ({ ...e, id: normalizeChannelId(e.id) }));
   } catch (e) {
     console.error(`channels ファイルを読めませんでした (${path}): ${e}`);
     return [];
@@ -137,7 +148,7 @@ server.registerTool(
   },
   async ({ channelId, limit, oldest }) => {
     const params: Record<string, string> = {
-      channel: channelId,
+      channel: normalizeChannelId(channelId),
       limit: String(limit),
     };
     if (oldest) params.oldest = oldest;
@@ -166,7 +177,7 @@ server.registerTool(
   },
   async ({ channelId, threadTs }) => {
     const json = await callSlack("conversations.replies", {
-      channel: channelId,
+      channel: normalizeChannelId(channelId),
       ts: threadTs,
       limit: "200",
     });

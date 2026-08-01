@@ -69,18 +69,25 @@ users:read         ユーザー ID から表示名への解決
 └── channels.json   読み取り対象のチャンネル一覧
 ```
 
-トークンは、コピーした状態で次を実行すると**画面やコマンド履歴に出さずに**配置できます。
+トークンは、クリップボード経由にすると**画面やコマンド履歴に出さずに**配置できます。
+順序に注意してください: **①下のコマンドを先にターミナルへ貼る（実行はまだ）→
+②Slack のページでトークンを Copy → ③ターミナルに戻って Enter**。
+トークンをコピーした後にコマンドをコピーすると、クリップボードが上書きされて消えます。
 
 ```powershell
 # Windows
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.slack-read-mcp" | Out-Null
 Set-Content "$env:USERPROFILE\.slack-read-mcp\token" (Get-Clipboard).Trim() -NoNewline
+Set-Clipboard "done"   # 本物のトークンをクリップボードに残さない
 ```
 
 ```bash
 # macOS / Linux
-mkdir -p ~/.slack-read-mcp && pbpaste > ~/.slack-read-mcp/token
+mkdir -p ~/.slack-read-mcp && pbpaste > ~/.slack-read-mcp/token && echo done | pbcopy
 ```
+
+AI に導入を任せる場合は、この配置は AI がクリップボードから直接行います
+（[INSTALL.md](INSTALL.md) 参照。利用者はコピーだけ）。
 
 `channels.json` は `channels.example.json` を参考に作ります。チャンネル ID は、
 Slack でチャンネル名を右クリック →「リンクをコピー」で取得できます。
