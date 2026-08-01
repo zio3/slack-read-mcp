@@ -86,7 +86,11 @@ export SLACK_BOT_TOKEN='xoxb-...'
 export SLACK_CHANNELS_FILE="$HOME/.config/slack-read-mcp/channels.json"
 ```
 
-環境変数の設定後、MCP クライアントを再起動してください。
+環境変数の設定後、**ターミナルごと再起動**してください。MCP クライアントの再起動だけでは
+足りません。環境変数の変更は起動中のプロセスへ伝播しないため、親のターミナルが古い環境を
+持っているとそこから引き継がれます。
+
+サーバーが `Connection closed` で失敗する場合、まずこれを疑ってください。
 
 ## 環境変数
 
