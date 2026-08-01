@@ -53,10 +53,32 @@ users:read         ユーザー ID から表示名への解決
 /invite @slack-read-mcp
 ```
 
-### 3. 読み取り対象を設定する
+### 3. トークンと読み取り対象を配置する
 
-`channels.example.json` を参考に、対象チャンネルを列挙したファイルを作ります。
-チャンネル ID は、Slack でチャンネル名を右クリック →「リンクをコピー」で取得できます。
+設定はホームディレクトリの `~/.slack-read-mcp/` に置きます。**MCP の設定ファイルや
+環境変数にトークンを書く必要はありません。**
+
+```
+~/.slack-read-mcp/
+├── token           Bot User OAuth Token（xoxb-…）を1行だけ
+└── channels.json   読み取り対象のチャンネル一覧
+```
+
+トークンは、コピーした状態で次を実行すると**画面やコマンド履歴に出さずに**配置できます。
+
+```powershell
+# Windows
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.slack-read-mcp" | Out-Null
+Set-Content "$env:USERPROFILE\.slack-read-mcp\token" (Get-Clipboard).Trim() -NoNewline
+```
+
+```bash
+# macOS / Linux
+mkdir -p ~/.slack-read-mcp && pbpaste > ~/.slack-read-mcp/token
+```
+
+`channels.json` は `channels.example.json` を参考に作ります。チャンネル ID は、
+Slack でチャンネル名を右クリック →「リンクをコピー」で取得できます。
 
 ```json
 [
@@ -72,32 +94,21 @@ Claude Code の場合:
 claude mcp add slack-read --scope local -- npx -y github:zio3/slack-read-mcp
 ```
 
-トークンは**設定ファイルに書かず**、環境変数で渡します。
+**ローカルスコープまたはユーザースコープに登録してください。** この MCP は個人の
+Bot Token と結びついた個人単位のツールです。プロジェクトスコープはリポジトリ内に
+`.mcp.json` を作って共有してしまうため不適切です。
 
-```powershell
-# Windows（一度実行すれば以降は不要。クリップボードにトークンをコピーしてから）
-[Environment]::SetEnvironmentVariable("SLACK_BOT_TOKEN", (Get-Clipboard).Trim(), "User")
-[Environment]::SetEnvironmentVariable("SLACK_CHANNELS_FILE", "C:\path\to\channels.json", "User")
-```
+## 設定の探索順
 
-```bash
-# macOS / Linux
-export SLACK_BOT_TOKEN='xoxb-...'
-export SLACK_CHANNELS_FILE="$HOME/.config/slack-read-mcp/channels.json"
-```
-
-環境変数の設定後、**ターミナルごと再起動**してください。MCP クライアントの再起動だけでは
-足りません。環境変数の変更は起動中のプロセスへ伝播しないため、親のターミナルが古い環境を
-持っているとそこから引き継がれます。
-
-サーバーが `Connection closed` で失敗する場合、まずこれを疑ってください。
-
-## 環境変数
-
-| 変数 | 必須 | 内容 |
+| 設定 | 優先1（環境変数） | 優先2（ファイル） |
 |---|---|---|
-| `SLACK_BOT_TOKEN` | 必須 | Bot User OAuth Token（`xoxb-`） |
-| `SLACK_CHANNELS_FILE` | 任意 | 読み取り対象を書いた JSON のパス。未指定なら `list_channels` は空を返す |
+| トークン | `SLACK_BOT_TOKEN` | `SLACK_TOKEN_FILE` のパス → `~/.slack-read-mcp/token` |
+| 読み取り対象 | `SLACK_CHANNELS_FILE` のパス | `~/.slack-read-mcp/channels.json` |
+
+通常はファイルだけで動きます。環境変数は CI などで上書きしたい場合に使ってください。
+なお環境変数を使う場合、変更は起動中のプロセスへ伝播しないため、**ターミナルごと
+再起動**が必要になります。ファイル方式ならこの問題はありません（MCP クライアントの
+再起動・再接続だけで反映されます）。
 
 ## ツール
 

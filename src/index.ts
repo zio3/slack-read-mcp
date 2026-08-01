@@ -5,14 +5,35 @@
  * 読める範囲は Bot が招待されたチャンネルのみで、これは Slack 側が決める。
  * このプログラムに権限を広げる手段はなく、書き込み系の API も呼ばない。
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const token = process.env.SLACK_BOT_TOKEN;
+/**
+ * 設定の置き場所は ~/.slack-read-mcp/ を既定とする。
+ * 環境変数はファイルの変更がプロセスの再起動だけで反映されない
+ * （ターミナルごと再起動が要る）ため、上書き用としてのみ残す。
+ */
+const configDir = join(homedir(), ".slack-read-mcp");
+
+function loadToken(): string | undefined {
+  if (process.env.SLACK_BOT_TOKEN) return process.env.SLACK_BOT_TOKEN;
+  const tokenFile = process.env.SLACK_TOKEN_FILE ?? join(configDir, "token");
+  if (existsSync(tokenFile)) {
+    return readFileSync(tokenFile, "utf8").trim();
+  }
+  return undefined;
+}
+
+const token = loadToken();
 if (!token) {
-  console.error("SLACK_BOT_TOKEN が設定されていません。");
+  console.error(
+    `Bot Token が見つかりません。${join(configDir, "token")} に置くか、` +
+      "環境変数 SLACK_BOT_TOKEN を設定してください。",
+  );
   process.exit(1);
 }
 
@@ -20,8 +41,9 @@ if (!token) {
 type ChannelEntry = { id: string; name: string; note?: string };
 
 function loadChannels(): ChannelEntry[] {
-  const path = process.env.SLACK_CHANNELS_FILE;
-  if (!path) return [];
+  const path =
+    process.env.SLACK_CHANNELS_FILE ?? join(configDir, "channels.json");
+  if (!existsSync(path)) return [];
   try {
     return JSON.parse(readFileSync(path, "utf8")) as ChannelEntry[];
   } catch (e) {

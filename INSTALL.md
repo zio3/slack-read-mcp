@@ -9,7 +9,7 @@
 ## 大原則
 
 **トークンを会話に出させない。** 利用者に「トークンを貼ってください」と言ってはいけません。
-クリップボード経由で環境変数へ入れてもらいます（手順は後述）。
+クリップボード経由でファイルへ入れてもらいます（手順は後述）。
 
 **Slack 側の操作は利用者が行う。** アプリの作成・インストール・チャンネルへの招待は、
 ブラウザでの操作と権限が要ります。AI が代行しようとしないでください。
@@ -66,10 +66,44 @@ TypeScript の直接実行は experimental のため、stderr に警告が出ま
 この場合は取得時に自動でビルドされるため、上記の分岐は不要です。ネットワーク経由の取得を
 避けたい環境では、クローンしてローカルパスを指定してください。
 
-## 手順4: 読み取り対象を設定する
+## 手順4: 設定ディレクトリを用意する
 
-`channels.example.json` を参考に、対象チャンネルを列挙した JSON を作ります。
-置き場所は利用者の設定ディレクトリが適切です（リポジトリ内に置かないでください）。
+設定はホームディレクトリの `~/.slack-read-mcp/` に置きます。**環境変数は使いません**
+（環境変数の変更はターミナルごと再起動しないと反映されず、導入時の典型的な詰まりに
+なるため。ファイル方式ならクライアントの再起動だけで済みます）。
+
+```
+~/.slack-read-mcp/
+├── token           Bot User OAuth Token（xoxb-…）を1行だけ
+└── channels.json   読み取り対象のチャンネル一覧
+```
+
+### token（利用者に配置してもらう）
+
+**AI が代わりに実行しないでください。** トークンをコピーした状態で、次を実行するよう
+伝えます。クリップボード経由にするのは、**トークンがコマンド履歴や会話ログに残らない
+ようにするため**です。
+
+Windows:
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.slack-read-mcp" | Out-Null
+Set-Content "$env:USERPROFILE\.slack-read-mcp\token" (Get-Clipboard).Trim() -NoNewline
+```
+
+macOS / Linux:
+
+```bash
+mkdir -p ~/.slack-read-mcp && pbpaste > ~/.slack-read-mcp/token
+```
+
+利用者がトークンを会話に貼ろうとしたら、止めて上記を案内してください。
+すでに貼られてしまった場合は、**Slack アプリの Reinstall でトークンを再発行する**よう
+伝えてください。
+
+### channels.json（AI が作ってよい）
+
+`channels.example.json` を参考に、対象チャンネルを列挙します。
 
 ```json
 [
@@ -83,32 +117,14 @@ TypeScript の直接実行は experimental のため、stderr に警告が出ま
 **この設定ファイルはアクセス制御ではありません。** ここに何を書いても、Bot が招待されて
 いないチャンネルは読めません。利用者が自由に編集して構わない旨を伝えてください。
 
-## 手順5: トークンを設定してもらう
+## 手順5: MCP クライアントへ登録する
 
-**利用者に実行してもらいます。AI が代わりに実行しないでください。**
-トークンをコピーした状態で、次を実行するよう伝えます。
+**ローカルスコープまたはユーザースコープに登録してください。プロジェクトスコープは
+不適切です。** この MCP は利用者個人の Bot Token と結びついた個人単位のツールであり、
+プロジェクトスコープはリポジトリ内に設定ファイル（`.mcp.json`）を作るため、共有時に
+他人へ自分用の登録を配ってしまいます。
 
-Windows:
-
-```powershell
-[Environment]::SetEnvironmentVariable("SLACK_BOT_TOKEN", (Get-Clipboard).Trim(), "User")
-[Environment]::SetEnvironmentVariable("SLACK_CHANNELS_FILE", "<channels.json のパス>", "User")
-```
-
-macOS / Linux（シェルの設定ファイルへ追記）:
-
-```bash
-echo 'export SLACK_BOT_TOKEN="<ここに貼る>"' >> ~/.zshrc
-echo 'export SLACK_CHANNELS_FILE="$HOME/.config/slack-read-mcp/channels.json"' >> ~/.zshrc
-```
-
-クリップボード経由にするのは、**トークンがコマンド履歴や会話ログに残らないようにするため**です。
-利用者がトークンを会話に貼ろうとしたら、止めて上記を案内してください。
-すでに貼られてしまった場合は、**Slack アプリの Reinstall でトークンを再発行する**よう伝えてください。
-
-## 手順6: MCP クライアントへ登録する
-
-Claude Code の場合（スコープは共有可能性に応じて選ぶ）:
+Claude Code の場合:
 
 ```bash
 claude mcp add slack-read --scope local -- npx -y github:zio3/slack-read-mcp
@@ -120,20 +136,13 @@ claude mcp add slack-read --scope local -- npx -y github:zio3/slack-read-mcp
 claude mcp add slack-read --scope local -- node /path/to/slack-read-mcp/dist/index.js
 ```
 
-**トークンを MCP の設定ファイルに書かないでください。** 環境変数から読みます。
-設定ファイルに平文で残すと、リポジトリや設定の共有時に漏れます。
+**トークンを MCP の設定に書かないでください**（`--env SLACK_BOT_TOKEN=…` を使わない）。
+サーバーは `~/.slack-read-mcp/token` を自分で読みます。設定に平文で残すと、設定の
+共有・バックアップ時に漏れます。
 
-環境変数を設定した直後は、**ターミナルごと再起動してもらってください。**
+登録後、MCP クライアントを再起動（または再接続）してください。
 
-MCP クライアントの再起動だけでは足りません。Windows のユーザー環境変数の変更は、
-既に起動しているプロセスへ伝播しないため、**親のターミナルが古い環境を持っていると
-そこから引き継いでしまいます**。ターミナル（コンソールウィンドウ）を閉じて開き直し、
-そこからクライアントを起動するよう依頼してください。
-
-サーバーが `Connection closed` で失敗する場合、まずこれを疑ってください。
-`SLACK_BOT_TOKEN` が無いとサーバーは起動直後に終了します。
-
-## 手順7: 動作を確認する
+## 手順6: 動作を確認する
 
 再起動後、次の順で確認します。
 
@@ -148,7 +157,7 @@ MCP クライアントの再起動だけでは足りません。Windows のユ�
 | `channel_not_found` | プライベートチャンネルで未招待、または ID が誤り | 同上。ID も確認 |
 | `missing_scope` | 権限が付与されていない操作を呼んだ | 仕様。回避しようとしない |
 | `invalid_auth` / `account_inactive` | トークンが無効、またはアプリがアンインストール済み | 再インストールとトークン再取得を依頼 |
-| `Connection closed` / サーバーが起動しない | `SLACK_BOT_TOKEN` が渡っていない | **ターミナルごと再起動**したか確認（手順6を参照） |
+| `Connection closed` / サーバーが起動しない | トークンが見つからない | `~/.slack-read-mcp/token` が存在するか、中身が1行の `xoxb-…` かを確認 |
 
 **読めなかった理由を推測で埋めないでください。** エラーをそのまま伝えれば、利用者は
 招待や再設定で解決できます。
