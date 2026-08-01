@@ -61,22 +61,30 @@ channels.json で動く事故になります。再テストや再インストー
 
 ## 手順3: 起動方式を決める
 
-`node --version` の結果で分岐します。**利用者に聞かず、AI が判断してください。**
+**既定は npx です。クローンもビルドも不要**で、取得時に自動でビルドされます。
+Node のバージョンによる分岐もありません。迷う要素がなければこれを選んでください。
 
-| Node のバージョン | 方式 | 起動コマンド |
-|---|---|---|
-| v23.6 以上 | TypeScript を直接実行 | `node src/index.ts` |
-| v22.6 〜 v23.5 | TypeScript を直接実行（フラグ付き） | `node --experimental-strip-types src/index.ts` |
-| v18 〜 v22.5 | ビルドしてから実行 | `npm install && npm run build` → `node dist/index.js` |
+```
+npx -y github:zio3/slack-read-mcp
+```
 
-**迷ったらビルド方式を選んでください。** どのバージョンでも動きます。
+**リポジトリをクローンするのは、次のいずれかに当てはまる場合だけ**です。
 
-TypeScript の直接実行は experimental のため、stderr に警告が出ます。MCP は stdout を使うので
-動作に支障はありませんが、利用者が驚かないよう一言伝えてください。
+- ネットワーク経由の取得を避けたい
+- 実行するコードをレビューしてから使いたい（動くコードと読むコードを一致させたい）
+- このサーバー自体を改造・開発する
 
-なお、リポジトリから直接取得して実行する方式（`npx -y github:zio3/slack-read-mcp`）も使えます。
-この場合は取得時に自動でビルドされるため、上記の分岐は不要です。ネットワーク経由の取得を
-避けたい環境では、クローンしてローカルパスを指定してください。
+クローンした場合の起動方法は Node のバージョンで変わります。
+
+| Node のバージョン | 起動コマンド |
+|---|---|
+| v18 〜 v22.5 | `npm install && npm run build` → `node dist/index.js` |
+| v22.6 〜 v23.5 | `node --experimental-strip-types src/index.ts`（ビルド不要） |
+| v23.6 以上 | `node src/index.ts`（ビルド不要） |
+
+迷ったらビルド方式（1行目）を選んでください。どのバージョンでも動きます。
+TypeScript の直接実行は experimental のため stderr に警告が出ますが、動作に支障は
+ありません（MCP は stdout を使います）。
 
 ## 手順4: 設定ディレクトリを用意する
 
