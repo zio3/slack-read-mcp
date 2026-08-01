@@ -26,7 +26,7 @@ Node.js が無ければ、利用者にインストールを依頼してくださ
 次に、**過去の設定が残っていないかを確認します。**
 
 ```
-~/.slack-read-mcp/ が既に存在するか
+~/.config/slack-read-mcp/ が既に存在するか
 ```
 
 存在する場合、それが**現役の設定なのか、過去のテストの残骸なのか**を利用者に確認して
@@ -80,12 +80,12 @@ TypeScript の直接実行は experimental のため、stderr に警告が出ま
 
 ## 手順4: 設定ディレクトリを用意する
 
-設定はホームディレクトリの `~/.slack-read-mcp/` に置きます。**環境変数は使いません**
+設定はホームディレクトリの `~/.config/slack-read-mcp/` に置きます。**環境変数は使いません**
 （環境変数の変更はターミナルごと再起動しないと反映されず、導入時の典型的な詰まりに
 なるため。ファイル方式ならクライアントの再起動だけで済みます）。
 
 ```
-~/.slack-read-mcp/
+~/.config/slack-read-mcp/
 ├── token           Bot User OAuth Token（xoxb-…）を1行だけ
 └── channels.json   読み取り対象のチャンネル一覧
 ```
@@ -114,8 +114,8 @@ $t = (Get-Clipboard -Raw).Trim()
 if (-not $t) { "クリップボードが空です。コピーし直してください" }
 elseif ($t -notlike "xoxb-*") { "xoxb- で始まっていません（長さ $($t.Length)）。コピーし直してください" }
 else {
-  New-Item -ItemType Directory -Force "$env:USERPROFILE\.slack-read-mcp" | Out-Null
-  [System.IO.File]::WriteAllText("$env:USERPROFILE\.slack-read-mcp\token", $t)
+  New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\slack-read-mcp" | Out-Null
+  [System.IO.File]::WriteAllText("$env:USERPROFILE\.config\slack-read-mcp\token", $t)
   Set-Clipboard "slack-read-mcp: token placed"
   "配置しました（長さ $($t.Length)）。クリップボードは上書き済みです"
 }
@@ -190,7 +190,7 @@ args = ["-y", "github:zio3/slack-read-mcp"]
 正常**です。取得とビルドはその時点で完了しており、失敗ではありません。
 
 **トークンを MCP の設定に書かないでください**（`--env SLACK_BOT_TOKEN=…` を使わない）。
-サーバーは `~/.slack-read-mcp/token` を自分で読みます。設定に平文で残すと、設定の
+サーバーは `~/.config/slack-read-mcp/token` を自分で読みます。設定に平文で残すと、設定の
 共有・バックアップ時に漏れます。
 
 登録後、MCP クライアントを再起動（または再接続）してください。
@@ -210,7 +210,7 @@ args = ["-y", "github:zio3/slack-read-mcp"]
 | `channel_not_found` | プライベートチャンネルで未招待、または ID が誤り | 同上。ID も確認 |
 | `missing_scope` | 権限が付与されていない操作を呼んだ | 仕様。回避しようとしない |
 | `invalid_auth` / `account_inactive` | トークンが無効、またはアプリがアンインストール済み | 再インストールとトークン再取得を依頼 |
-| `Connection closed` / サーバーが起動しない | トークンが見つからない | `~/.slack-read-mcp/token` が存在するか、中身が1行の `xoxb-…` かを確認 |
+| `Connection closed` / サーバーが起動しない | トークンが見つからない | `~/.config/slack-read-mcp/token` が存在するか、中身が1行の `xoxb-…` かを確認 |
 
 **読めなかった理由を推測で埋めないでください。** エラーをそのまま伝えれば、利用者は
 招待や再設定で解決できます。

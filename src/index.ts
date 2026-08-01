@@ -13,11 +13,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 /**
- * 設定の置き場所は ~/.slack-read-mcp/ を既定とする。
+ * 設定の置き場所は ~/.config/slack-read-mcp/ を既定とする。
  * 環境変数はファイルの変更がプロセスの再起動だけで反映されない
  * （ターミナルごと再起動が要る）ため、上書き用としてのみ残す。
  */
-const configDir = join(homedir(), ".slack-read-mcp");
+const configDir = join(homedir(), ".config", "slack-read-mcp");
 
 function loadToken(): string | undefined {
   if (process.env.SLACK_BOT_TOKEN) return process.env.SLACK_BOT_TOKEN;

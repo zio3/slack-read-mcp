@@ -60,11 +60,11 @@ users:read         ユーザー ID から表示名への解決
 
 ### 3. トークンと読み取り対象を配置する
 
-設定はホームディレクトリの `~/.slack-read-mcp/` に置きます。**MCP の設定ファイルや
+設定はホームディレクトリの `~/.config/slack-read-mcp/` に置きます。**MCP の設定ファイルや
 環境変数にトークンを書く必要はありません。**
 
 ```
-~/.slack-read-mcp/
+~/.config/slack-read-mcp/
 ├── token           Bot User OAuth Token（xoxb-…）を1行だけ
 └── channels.json   読み取り対象のチャンネル一覧
 ```
@@ -76,14 +76,14 @@ users:read         ユーザー ID から表示名への解決
 
 ```powershell
 # Windows
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.slack-read-mcp" | Out-Null
-Set-Content "$env:USERPROFILE\.slack-read-mcp\token" (Get-Clipboard).Trim() -NoNewline
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\slack-read-mcp" | Out-Null
+Set-Content "$env:USERPROFILE\.config\slack-read-mcp\token" (Get-Clipboard).Trim() -NoNewline
 Set-Clipboard "done"   # 本物のトークンをクリップボードに残さない
 ```
 
 ```bash
 # macOS / Linux
-mkdir -p ~/.slack-read-mcp && pbpaste > ~/.slack-read-mcp/token && echo done | pbcopy
+mkdir -p ~/.config/slack-read-mcp && pbpaste > ~/.config/slack-read-mcp/token && echo done | pbcopy
 ```
 
 AI に導入を任せる場合は、この配置は AI がクリップボードから直接行います
@@ -114,8 +114,8 @@ Bot Token と結びついた個人単位のツールです。プロジェクト�
 
 | 設定 | 優先1（環境変数） | 優先2（ファイル） |
 |---|---|---|
-| トークン | `SLACK_BOT_TOKEN` | `SLACK_TOKEN_FILE` のパス → `~/.slack-read-mcp/token` |
-| 読み取り対象 | `SLACK_CHANNELS_FILE` のパス | `~/.slack-read-mcp/channels.json` |
+| トークン | `SLACK_BOT_TOKEN` | `SLACK_TOKEN_FILE` のパス → `~/.config/slack-read-mcp/token` |
+| 読み取り対象 | `SLACK_CHANNELS_FILE` のパス | `~/.config/slack-read-mcp/channels.json` |
 
 通常はファイルだけで動きます。環境変数は CI などで上書きしたい場合に使ってください。
 なお環境変数を使う場合、変更は起動中のプロセスへ伝播しないため、**ターミナルごと
