@@ -15,7 +15,8 @@
       "bot": [
         "channels:history",
         "groups:history",
-        "users:read"
+        "users:read",
+        "reactions:read"
       ]
     }
   },

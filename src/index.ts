@@ -117,10 +117,16 @@ function toMessage(m: any) {
     thread_ts: m.thread_ts,
     reply_count: m.reply_count,
     subtype: m.subtype,
+    // reactions:read スコープが無いと Slack は reactions を返さない（エラーにもならない）。
+    reactions: m.reactions?.map((r: any) => ({
+      name: r.name,
+      count: r.count,
+      users: r.users,
+    })),
   };
 }
 
-const server = new McpServer({ name: "slack-read-mcp", version: "0.1.0" });
+const server = new McpServer({ name: "slack-read-mcp", version: "0.2.0" });
 
 server.registerTool(
   "list_channels",
@@ -139,6 +145,7 @@ server.registerTool(
     description:
       "チャンネルのメッセージを新しい順に取得する。oldest に前回の ts を渡すと差分だけ取れる。" +
       "スレッド返信は含まれない（reply_count > 0 のメッセージには get_thread_replies が必要）。" +
+      "各メッセージの reactions も返す（Bot に reactions:read スコープが無い場合は省略される）。" +
       "Bot が参加していない場合は not_in_channel または channel_not_found になる。",
     inputSchema: {
       channelId: z.string().describe("チャンネル ID（C から始まる）"),
