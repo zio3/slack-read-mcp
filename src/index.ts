@@ -155,9 +155,15 @@ function toTs(value: string): string {
   return `${Math.floor(ms / 1000)}.${String((ms % 1000) * 1000).padStart(6, "0")}`;
 }
 
-/** 一覧表示用に本文を 1 行・短く切り詰める。 */
+/**
+ * 一覧表示用に本文を 1 行・短く切り詰める。
+ * 「<@U…> <@U…>」のようにメンションだけの行は宛先であって中身ではないので飛ばし、
+ * 最初の本文行を出す（すべてメンション行なら先頭行をそのまま使う）。
+ */
 function snippet(text: string | undefined, max = 80): string {
-  const line = (text ?? "").split("\n").find((l) => l.trim() !== "") ?? "";
+  const lines = (text ?? "").split("\n").filter((l) => l.trim() !== "");
+  const isMentionOnly = (l: string) => l.replace(/<@[^>]+>|\s|cc:?|CC:?/gi, "") === "";
+  const line = lines.find((l) => !isMentionOnly(l)) ?? lines[0] ?? "";
   return line.length > max ? line.slice(0, max) + "…" : line;
 }
 
