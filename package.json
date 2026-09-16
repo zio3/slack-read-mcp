@@ -1,6 +1,6 @@
 {
   "name": "slack-read-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Read-only Slack MCP server. Reads only the channels its bot has been invited to.",
   "type": "module",
   "bin": {
