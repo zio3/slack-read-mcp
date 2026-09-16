@@ -128,8 +128,9 @@ claude mcp add slack-read --scope local -- npx -y github:zio3/slack-read-mcp
 | ツール | 内容 |
 |---|---|
 | `list_channels` | 設定ファイルに書かれた対象の一覧。Slack へは問い合わせない |
-| `get_channel_history` | チャンネルのメッセージ取得。`oldest` で差分のみ取得可 |
-| `get_thread_replies` | スレッド返信の取得 |
+| `get_channel_history` | チャンネルのメッセージ取得。`oldest` で差分のみ取得可。スレッドの親には `latest_reply` が付く |
+| `list_active_threads` | 巡回用。`since` 以降の新規投稿と、`since` 以降に返信が付いたスレッドだけを短く返す。判定はサーバー側で行うので、動きのないスレッドを読まされない |
+| `get_thread_replies` | スレッド返信の取得。`oldest` で増分のみ取得可 |
 | `resolve_user` | ユーザー ID を表示名・実名に解決 |
 
 ## 使う AI に読ませるもの
