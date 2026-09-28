@@ -5,9 +5,11 @@
  * 読める範囲は Bot が招待されたチャンネルのみで、これは Slack 側が決める。
  * このプログラムに権限を広げる手段はなく、書き込み系の API も呼ばない。
  */
-import { existsSync, readFileSync } from "node:fs";
+import { createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -108,11 +110,29 @@ function ok(value: unknown) {
   };
 }
 
+/**
+ * 添付ファイルのメタデータ。中身は含まない（download_file で明示的に取る）。
+ * files:read スコープが無くてもメッセージにはこの情報が付く。
+ * 削除済み・非表示のファイルは mode が tombstone / hidden_by_limit になり、名前が無い。
+ */
+function toFile(f: any) {
+  return {
+    id: f.id,
+    name: f.name ?? f.title,
+    filetype: f.filetype,
+    mimetype: f.mimetype,
+    size: f.size,
+    mode: f.mode,
+  };
+}
+
 function toMessage(m: any) {
   return {
     ts: m.ts,
     user: m.user ?? m.bot_id,
     text: m.text,
+    // 添付ファイル（画像・Excel・PDF など）の一覧。無ければ省略。
+    files: m.files?.length ? m.files.map(toFile) : undefined,
     // thread_ts === ts ならスレッドの親。異なればスレッド返信。
     thread_ts: m.thread_ts,
     reply_count: m.reply_count,
@@ -170,7 +190,7 @@ function snippet(text: string | undefined, max = 80): string {
 /** ページ送りの上限。暴走防止で、これを超えたら truncated を立てて止める。 */
 const MAX_PAGES = 10;
 
-const server = new McpServer({ name: "slack-read-mcp", version: "0.3.0" });
+const server = new McpServer({ name: "slack-read-mcp", version: "0.4.0" });
 
 server.registerTool(
   "list_channels",
@@ -283,6 +303,8 @@ server.registerTool(
         text: snippet(m.text),
         reply_count: m.reply_count,
         subtype: m.subtype,
+        // 添付の有無だけ。中身は get_thread_replies / get_channel_history の files で見る
+        file_count: m.files?.length || undefined,
       }));
 
     const activeThreads = parents
@@ -299,6 +321,8 @@ server.registerTool(
         reply_count: m.reply_count,
         reply_users_count: m.reply_users_count,
         latest_reply: m.latest_reply,
+        // 親の添付。増分取得（oldest 付き）では親が返らないので、ここで有無だけ分かるようにする
+        file_count: m.files?.length || undefined,
       }));
 
     const last = parents[parents.length - 1];
@@ -364,6 +388,147 @@ server.registerTool(
       count: messages.length,
       truncated,
       messages: messages.map(toMessage),
+    });
+  },
+);
+
+/**
+ * 保存先の既定。共有の一時領域（/tmp）は他のローカルユーザーから読めるうえ、
+ * 先に同名ディレクトリを作られる余地があるので使わず、ホーム配下に利用者専用で作る。
+ */
+const defaultDownloadDir = join(homedir(), ".cache", "slack-read-mcp");
+
+/** 1 ファイルの上限。全量を読む前に files.info の size で弾き、サーバーをメモリ不足で落とさない。 */
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+/** ファイル名から区切り文字・制御文字を除く（パス操作に使われないようにする）。 */
+function safeFileName(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/^\.+/, "");
+  return cleaned || "file";
+}
+
+/**
+ * 保存先ディレクトリを利用者専用（0700）で用意する。既にあるものがシンボリックリンクなら、
+ * 別の場所へ書かされる可能性があるので使わない（Windows では mode は無視される）。
+ */
+function ensureDownloadDir(dir: string): string | undefined {
+  if (existsSync(dir)) {
+    const st = lstatSync(dir);
+    if (st.isSymbolicLink()) return "保存先がシンボリックリンクです";
+    if (!st.isDirectory()) return "保存先がディレクトリではありません";
+    // 既存のディレクトリが他のユーザーからも読める権限だと利用者専用にならない（POSIX のみ判定）
+    if (process.platform !== "win32") {
+      if (typeof process.getuid === "function" && st.uid !== process.getuid()) {
+        return "保存先の所有者が実行ユーザーではありません";
+      }
+      if ((st.mode & 0o077) !== 0) return "保存先が他のユーザーからも読める権限です（chmod 700 にしてください）";
+    }
+    return undefined;
+  }
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return undefined;
+}
+
+server.registerTool(
+  "download_file",
+  {
+    description:
+      "メッセージに添付されたファイル（画像・Excel・PDF など）を Bot トークンで取得し、ローカルに保存してパスを返す。" +
+      "fileId は get_thread_replies / get_channel_history の files[].id。" +
+      "Bot に files:read スコープが無いと missing_scope になる。読めるのは Bot が招待されたチャンネルのファイルだけ。" +
+      "保存先は既定でホーム配下の ~/.cache/slack-read-mcp/（利用者専用）。50MB を超えるファイルは取得しない。" +
+      "落としたファイルは Slack と同じ機密度で扱い、読み終えたら消すこと。",
+    inputSchema: {
+      fileId: z.string().describe("ファイル ID（F から始まる）"),
+      outDir: z
+        .string()
+        .optional()
+        .describe("保存先フォルダ（絶対パス）。省略時は ~/.cache/slack-read-mcp/"),
+    },
+  },
+  async ({ fileId, outDir }) => {
+    if (outDir && !isAbsolute(outDir)) {
+      return fail({ error: "invalid_out_dir", needed: "outDir は絶対パスで指定してください" });
+    }
+
+    const info = await callSlack("files.info", { file: fileId });
+    if (!info.ok) return fail(info);
+
+    const f = info.file ?? {};
+    const url: string | undefined = f.url_private_download ?? f.url_private;
+    if (!url) {
+      // 削除済み（tombstone）や外部ファイルは取得 URL を持たない
+      return fail({ error: "file_not_downloadable", needed: f.mode ?? "no url_private" });
+    }
+
+    if (typeof f.size === "number" && f.size > MAX_FILE_BYTES) {
+      return fail({
+        error: "file_too_large",
+        needed: `${MAX_FILE_BYTES} バイト以下（このファイルは ${f.size} バイト）`,
+      });
+    }
+
+    const dir = outDir ?? defaultDownloadDir;
+    const dirError = ensureDownloadDir(dir);
+    if (dirError) return fail({ error: "invalid_out_dir", needed: dirError });
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      redirect: "follow",
+    });
+    const contentType = res.headers.get("content-type") ?? "";
+    // 権限が無いと Slack は 200 でログインページ（HTML）を返すことがある。中身を保存しても意味がないので弾く
+    if (!res.ok || !res.body || (contentType.includes("text/html") && !String(f.mimetype ?? "").includes("html"))) {
+      return fail({
+        error: res.ok ? "file_not_accessible" : `http_${res.status}`,
+        needed: "files:read スコープと、Bot がそのチャンネルに招待されていること",
+      });
+    }
+
+    const name = safeFileName(f.name ?? f.title ?? fileId);
+    // 既存ファイルは上書きしない（公開権限のファイルやシンボリックリンクに書かされないため）。
+    // 同じファイルを再取得したときは連番を付けて新しく作る。open は 'wx'（排他作成）で行う
+    const base = `${f.id ?? fileId}_${name}`;
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? base.slice(0, base.length - (name.length - dot)) : base;
+    const ext = dot > 0 ? name.slice(dot) : "";
+    let path = join(dir, base);
+    for (let n = 1; existsSync(path) && n < 100; n++) path = join(dir, `${stem}-${n}${ext}`);
+    // 排他作成で「このファイルは今回の呼び出しが作った」ことを確定させる。
+    // 既に在れば（候補名が尽きた・同時実行）何も消さずに止まる
+    let fd: number;
+    try {
+      fd = openSync(path, "wx", 0o600);
+    } catch (e) {
+      return fail({ error: "file_exists", needed: path });
+    }
+    // 全量をメモリに載せず、そのままファイルへ流す。ファイルは利用者だけが読める権限で作る
+    let written = 0;
+    const counter = new Transform({
+      transform(chunk, _enc, cb) {
+        written += chunk.length;
+        cb(null, chunk);
+      },
+    });
+    try {
+      await pipeline(
+        Readable.fromWeb(res.body as any),
+        counter,
+        createWriteStream(path, { fd }),
+      );
+    } catch (e) {
+      // 転送途中で切れたら書きかけを残さない（残ると再試行で別名が増えるだけで気づけない）。
+      // 消すのは上で自分が作ったファイルだけ
+      rmSync(path, { force: true });
+      return fail({ error: "download_failed", needed: String(e) });
+    }
+
+    return ok({
+      id: f.id ?? fileId,
+      name: f.name ?? f.title,
+      mimetype: f.mimetype,
+      size: written,
+      path,
     });
   },
 );
