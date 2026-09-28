@@ -40,13 +40,19 @@ Bot は自分が招待されていないチャンネルの存在を知ること�
 [api.slack.com/apps](https://api.slack.com/apps) → Create New App → **From a manifest** を選び、
 `slack-app-manifest.json` の内容を貼り付けます。
 
-付与されるスコープは3つだけです。
+付与されるスコープは次のとおりです。すべて読み取り専用です。
 
 ```
 channels:history   参加しているパブリックチャンネルのメッセージ
 groups:history     参加しているプライベートチャンネルのメッセージ
 users:read         ユーザー ID から表示名への解決
+reactions:read     メッセージに付いたリアクション
+files:read         添付ファイル（画像・Excel・PDF）の取得。download_file にだけ必要
 ```
+
+`reactions:read` と `files:read` は無くても動きます（該当の情報が省略される／`missing_scope` が返る）。
+本文だけで足りるなら Manifest から外して構いません。逆に後から足す場合は、Manifest を更新して
+**再インストール**しないと既存トークンには反映されません。
 
 作成後、ワークスペースへインストールして **Bot User OAuth Token**（`xoxb-` で始まる）を取得します。
 
@@ -131,7 +137,10 @@ claude mcp add slack-read --scope local -- npx -y github:zio3/slack-read-mcp
 | `get_channel_history` | チャンネルのメッセージ取得。`oldest` で差分のみ取得可。スレッドの親には `latest_reply` が付く |
 | `list_active_threads` | 巡回用。`since` 以降の新規投稿と、`since` 以降に返信が付いたスレッドだけを短く返す。判定はサーバー側で行うので、動きのないスレッドを読まされない |
 | `get_thread_replies` | スレッド返信の取得。`oldest` で増分のみ取得可 |
+| `download_file` | 添付ファイルを Bot トークンで取得してローカルに保存し、パスを返す。`files:read` が必要。メッセージの `files[].id` を渡す |
 | `resolve_user` | ユーザー ID を表示名・実名に解決 |
+
+添付ファイルのメタデータ（`files`: id / 名前 / 種類 / サイズ）はメッセージに含まれます。中身は `download_file` で明示的に取ります。
 
 ## 使う AI に読ませるもの
 

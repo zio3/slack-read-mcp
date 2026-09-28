@@ -5,9 +5,9 @@
  * 読める範囲は Bot が招待されたチャンネルのみで、これは Slack 側が決める。
  * このプログラムに権限を広げる手段はなく、書き込み系の API も呼ばない。
  */
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -108,11 +108,29 @@ function ok(value: unknown) {
   };
 }
 
+/**
+ * 添付ファイルのメタデータ。中身は含まない（download_file で明示的に取る）。
+ * files:read スコープが無くてもメッセージにはこの情報が付く。
+ * 削除済み・非表示のファイルは mode が tombstone / hidden_by_limit になり、名前が無い。
+ */
+function toFile(f: any) {
+  return {
+    id: f.id,
+    name: f.name ?? f.title,
+    filetype: f.filetype,
+    mimetype: f.mimetype,
+    size: f.size,
+    mode: f.mode,
+  };
+}
+
 function toMessage(m: any) {
   return {
     ts: m.ts,
     user: m.user ?? m.bot_id,
     text: m.text,
+    // 添付ファイル（画像・Excel・PDF など）の一覧。無ければ省略。
+    files: m.files?.length ? m.files.map(toFile) : undefined,
     // thread_ts === ts ならスレッドの親。異なればスレッド返信。
     thread_ts: m.thread_ts,
     reply_count: m.reply_count,
@@ -170,7 +188,7 @@ function snippet(text: string | undefined, max = 80): string {
 /** ページ送りの上限。暴走防止で、これを超えたら truncated を立てて止める。 */
 const MAX_PAGES = 10;
 
-const server = new McpServer({ name: "slack-read-mcp", version: "0.3.0" });
+const server = new McpServer({ name: "slack-read-mcp", version: "0.4.0" });
 
 server.registerTool(
   "list_channels",
@@ -283,6 +301,8 @@ server.registerTool(
         text: snippet(m.text),
         reply_count: m.reply_count,
         subtype: m.subtype,
+        // 添付の有無だけ。中身は get_thread_replies / get_channel_history の files で見る
+        file_count: m.files?.length || undefined,
       }));
 
     const activeThreads = parents
@@ -364,6 +384,76 @@ server.registerTool(
       count: messages.length,
       truncated,
       messages: messages.map(toMessage),
+    });
+  },
+);
+
+/** 保存先の既定。OS の一時領域の下に置き、リポジトリや台帳の中には作らない。 */
+const defaultDownloadDir = join(tmpdir(), "slack-read-mcp");
+
+/** ファイル名から区切り文字・制御文字を除く（パス操作に使われないようにする）。 */
+function safeFileName(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/^\.+/, "");
+  return cleaned || "file";
+}
+
+server.registerTool(
+  "download_file",
+  {
+    description:
+      "メッセージに添付されたファイル（画像・Excel・PDF など）を Bot トークンで取得し、ローカルに保存してパスを返す。" +
+      "fileId は get_thread_replies / get_channel_history の files[].id。" +
+      "Bot に files:read スコープが無いと missing_scope になる。読めるのは Bot が招待されたチャンネルのファイルだけ。" +
+      "保存先は既定で OS の一時領域（slack-read-mcp/）。落としたファイルは Slack と同じ機密度で扱い、読み終えたら消すこと。",
+    inputSchema: {
+      fileId: z.string().describe("ファイル ID（F から始まる）"),
+      outDir: z
+        .string()
+        .optional()
+        .describe("保存先フォルダ（絶対パス）。省略時は OS の一時領域の slack-read-mcp/"),
+    },
+  },
+  async ({ fileId, outDir }) => {
+    if (outDir && !isAbsolute(outDir)) {
+      return fail({ error: "invalid_out_dir", needed: "outDir は絶対パスで指定してください" });
+    }
+
+    const info = await callSlack("files.info", { file: fileId });
+    if (!info.ok) return fail(info);
+
+    const f = info.file ?? {};
+    const url: string | undefined = f.url_private_download ?? f.url_private;
+    if (!url) {
+      // 削除済み（tombstone）や外部ファイルは取得 URL を持たない
+      return fail({ error: "file_not_downloadable", needed: f.mode ?? "no url_private" });
+    }
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      redirect: "follow",
+    });
+    const contentType = res.headers.get("content-type") ?? "";
+    // 権限が無いと Slack は 200 でログインページ（HTML）を返すことがある。中身を保存しても意味がないので弾く
+    if (!res.ok || (contentType.includes("text/html") && !String(f.mimetype ?? "").includes("html"))) {
+      return fail({
+        error: res.ok ? "file_not_accessible" : `http_${res.status}`,
+        needed: "files:read スコープと、Bot がそのチャンネルに招待されていること",
+      });
+    }
+
+    const dir = outDir ?? defaultDownloadDir;
+    mkdirSync(dir, { recursive: true });
+    const name = safeFileName(f.name ?? f.title ?? fileId);
+    const path = join(dir, `${f.id ?? fileId}_${name}`);
+    const bytes = Buffer.from(await res.arrayBuffer());
+    writeFileSync(path, bytes);
+
+    return ok({
+      id: f.id ?? fileId,
+      name: f.name ?? f.title,
+      mimetype: f.mimetype,
+      size: bytes.length,
+      path,
     });
   },
 );
