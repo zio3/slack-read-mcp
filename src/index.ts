@@ -7,7 +7,7 @@
  */
 import { createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -190,7 +190,7 @@ function snippet(text: string | undefined, max = 80): string {
 /** ページ送りの上限。暴走防止で、これを超えたら truncated を立てて止める。 */
 const MAX_PAGES = 10;
 
-const server = new McpServer({ name: "slack-read-mcp", version: "0.4.0" });
+const server = new McpServer({ name: "slack-read-mcp", version: "0.4.1" });
 
 server.registerTool(
   "list_channels",
@@ -398,6 +398,22 @@ server.registerTool(
  */
 const defaultDownloadDir = join(homedir(), ".cache", "slack-read-mcp");
 
+/**
+ * Bot トークンを付けて取りに行ってよい宛先。files.info の url_private は外部ファイル（Google Drive 等）だと
+ * 外部サイトを指すことがあり、そこへトークンを送ると漏れる。https の files.slack.com だけに限る。
+ */
+function isSlackFileUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" && u.hostname === "files.slack.com" && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+}
+
+/** リダイレクトを追う上限。 */
+const MAX_REDIRECTS = 5;
+
 /** 1 ファイルの上限。全量を読む前に files.info の size で弾き、サーバーをメモリ不足で落とさない。 */
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
@@ -436,21 +452,14 @@ server.registerTool(
       "メッセージに添付されたファイル（画像・Excel・PDF など）を Bot トークンで取得し、ローカルに保存してパスを返す。" +
       "fileId は get_thread_replies / get_channel_history の files[].id。" +
       "Bot に files:read スコープが無いと missing_scope になる。読めるのは Bot が招待されたチャンネルのファイルだけ。" +
-      "保存先は既定でホーム配下の ~/.cache/slack-read-mcp/（利用者専用）。50MB を超えるファイルは取得しない。" +
+      "保存先はホーム配下の ~/.cache/slack-read-mcp/（利用者専用）に固定。50MB を超えるファイルは取得しない。" +
+      "Slack 外の URL を指す外部ファイル（Google Drive 等）は取得しない。" +
       "落としたファイルは Slack と同じ機密度で扱い、読み終えたら消すこと。",
     inputSchema: {
       fileId: z.string().describe("ファイル ID（F から始まる）"),
-      outDir: z
-        .string()
-        .optional()
-        .describe("保存先フォルダ（絶対パス）。省略時は ~/.cache/slack-read-mcp/"),
     },
   },
-  async ({ fileId, outDir }) => {
-    if (outDir && !isAbsolute(outDir)) {
-      return fail({ error: "invalid_out_dir", needed: "outDir は絶対パスで指定してください" });
-    }
-
+  async ({ fileId }) => {
     const info = await callSlack("files.info", { file: fileId });
     if (!info.ok) return fail(info);
 
@@ -460,6 +469,10 @@ server.registerTool(
       // 削除済み（tombstone）や外部ファイルは取得 URL を持たない
       return fail({ error: "file_not_downloadable", needed: f.mode ?? "no url_private" });
     }
+    if (!isSlackFileUrl(url)) {
+      // 外部ファイル等。Bot トークンを Slack 以外へ送らない（URL は返さない）
+      return fail({ error: "file_not_downloadable", needed: "取得先が https://files.slack.com ではありません" });
+    }
 
     if (typeof f.size === "number" && f.size > MAX_FILE_BYTES) {
       return fail({
@@ -468,14 +481,28 @@ server.registerTool(
       });
     }
 
-    const dir = outDir ?? defaultDownloadDir;
+    // 保存先は固定（任意のパスに書かせると、スタートアップフォルダ等に置かれて実行され得る）
+    const dir = defaultDownloadDir;
     const dirError = ensureDownloadDir(dir);
     if (dirError) return fail({ error: "invalid_out_dir", needed: dirError });
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      redirect: "follow",
-    });
+    // リダイレクトは自分で追い、移り先も files.slack.com のときだけトークンを付けて取りに行く
+    let target = url;
+    let res: Response | undefined;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      res = await fetch(target, {
+        headers: { Authorization: `Bearer ${token}` },
+        redirect: "manual",
+      });
+      if (res.status < 300 || res.status >= 400) break;
+      const location = res.headers.get("location");
+      const next = location ? new URL(location, target).toString() : "";
+      if (!next || !isSlackFileUrl(next) || hop === MAX_REDIRECTS) {
+        return fail({ error: "file_not_downloadable", needed: "リダイレクト先が https://files.slack.com ではありません" });
+      }
+      target = next;
+    }
+    if (!res) return fail({ error: "download_failed", needed: "no response" });
     const contentType = res.headers.get("content-type") ?? "";
     // 権限が無いと Slack は 200 でログインページ（HTML）を返すことがある。中身を保存しても意味がないので弾く
     if (!res.ok || !res.body || (contentType.includes("text/html") && !String(f.mimetype ?? "").includes("html"))) {
